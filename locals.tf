@@ -50,4 +50,9 @@ locals {
     for ip in local.worker_ips :
     cidrnetmask(ip)
   ]
+
+  worker_hostname_yaml = join("\n", [
+    for hostname in local.worker_hostnames :
+    "          - ${hostname}"
+  ])
 }

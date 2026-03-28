@@ -60,6 +60,7 @@ resource "terraform_data" "cilium" {
 
   triggers_replace = [
     var.cilium_version,
+    tostring(var.enable_cilium_bgp),
     tostring(var.enable_cilium_l2_announcements),
     tostring(var.install_gateway_api),
     tostring(var.install_hubble),
@@ -80,6 +81,7 @@ resource "terraform_data" "cilium" {
         --set kubeProxyReplacement=true `
         --set k8sClientRateLimit.qps=20 `
         --set k8sClientRateLimit.burst=40 `
+        --set bgpControlPlane.enabled=${lower(tostring(var.enable_cilium_bgp))} `
         --set l2announcements.enabled=${lower(tostring(var.enable_cilium_l2_announcements))} `
         --set hubble.enabled=${lower(tostring(var.install_hubble))} `
         --set hubble.relay.enabled=${lower(tostring(var.install_hubble))} `
@@ -93,6 +95,11 @@ resource "terraform_data" "cilium" {
         --set gatewayAPI.enabled=${lower(tostring(var.install_gateway_api))} `
         --set gatewayAPI.enableAlpn=${lower(tostring(var.install_gateway_api))} `
         --set gatewayAPI.enableAppProtocol=${lower(tostring(var.install_gateway_api))}
+
+      if ([System.Convert]::ToBoolean("${lower(tostring(var.enable_cilium_bgp))}")) {
+        & "${var.kubectl_command}" -n kube-system rollout restart ds/cilium
+        & "${var.kubectl_command}" -n kube-system rollout status ds/cilium --timeout=15m
+      }
     EOT
   }
 
@@ -255,5 +262,135 @@ spec:
     terraform_data.cilium,
     terraform_data.cilium_lb_pool,
     terraform_data.hubble_gateway,
+  ]
+}
+
+resource "terraform_data" "cilium_bgp_crds_ready" {
+  count = var.install_cilium && var.enable_cilium_bgp ? 1 : 0
+
+  triggers_replace = [
+    var.cilium_version,
+    abspath(var.kubeconfig_path),
+  ]
+
+  provisioner "local-exec" {
+    interpreter = ["PowerShell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+    command     = <<-EOT
+      $env:KUBECONFIG = "${abspath(var.kubeconfig_path)}"
+      $kubectl = "${var.kubectl_command}"
+      $crds = @(
+        "ciliumbgpclusterconfigs.cilium.io",
+        "ciliumbgppeerconfigs.cilium.io",
+        "ciliumbgpadvertisements.cilium.io"
+      )
+      $deadline = (Get-Date).AddMinutes(10)
+
+      while ((Get-Date) -lt $deadline) {
+        $missing = @()
+
+        foreach ($crd in $crds) {
+          try {
+            & $kubectl get crd $crd *> $null
+            if ($LASTEXITCODE -ne 0) {
+              $missing += $crd
+            }
+          } catch {
+            $missing += $crd
+          }
+        }
+
+        if ($missing.Count -eq 0) {
+          exit 0
+        }
+
+        Start-Sleep -Seconds 10
+      }
+
+      Write-Error "Timed out waiting for Cilium BGP CRDs to become available."
+      exit 1
+    EOT
+  }
+
+  depends_on = [terraform_data.cilium]
+}
+
+resource "terraform_data" "cilium_bgp" {
+  count = var.install_cilium && var.enable_cilium_bgp ? 1 : 0
+
+  triggers_replace = [
+    tostring(var.cilium_bgp_local_asn),
+    tostring(var.cilium_bgp_peer_asn),
+    var.cilium_bgp_peer_address,
+    var.cilium_bgp_peer_name,
+    join(",", local.worker_hostnames),
+    abspath(var.kubeconfig_path),
+  ]
+
+  provisioner "local-exec" {
+    interpreter = ["PowerShell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+    command     = <<-EOT
+      $env:KUBECONFIG = "${abspath(var.kubeconfig_path)}"
+      $kubectl = "${var.kubectl_command}"
+      @"
+apiVersion: cilium.io/v2
+kind: CiliumBGPPeerConfig
+metadata:
+  name: ${var.cilium_bgp_peer_name}-peer
+spec:
+  timers:
+    holdTimeSeconds: 90
+    keepAliveTimeSeconds: 30
+  families:
+  - afi: ipv4
+    safi: unicast
+    advertisements:
+      matchLabels:
+        advertise: bgp
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: ${var.cilium_bgp_peer_name}-advertisements
+  labels:
+    advertise: bgp
+spec:
+  advertisements:
+  - advertisementType: Service
+    service:
+      addresses:
+      - LoadBalancerIP
+    selector:
+      matchLabels:
+        io.kubernetes.service.namespace: ${var.hubble_gateway_namespace}
+        io.kubernetes.service.name: cilium-gateway-${var.hubble_gateway_name}
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPClusterConfig
+metadata:
+  name: ${var.cilium_bgp_peer_name}
+spec:
+  nodeSelector:
+    matchExpressions:
+    - key: kubernetes.io/hostname
+      operator: In
+      values:
+${local.worker_hostname_yaml}
+  bgpInstances:
+  - name: ${var.cilium_bgp_peer_name}
+    localASN: ${var.cilium_bgp_local_asn}
+    peers:
+    - name: ${var.cilium_bgp_peer_name}
+      peerASN: ${var.cilium_bgp_peer_asn}
+      peerAddress: ${var.cilium_bgp_peer_address}
+      peerConfigRef:
+        name: ${var.cilium_bgp_peer_name}-peer
+"@ | & $kubectl apply -f -
+    EOT
+  }
+
+  depends_on = [
+    terraform_data.cilium_bgp_crds_ready,
+    terraform_data.cilium_lb_pool,
+    terraform_data.kubernetes_nodes_ready,
   ]
 }

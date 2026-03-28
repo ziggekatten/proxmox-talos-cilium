@@ -158,6 +158,31 @@ variable "enable_cilium_l2_announcements" {
   default = true
 }
 
+variable "enable_cilium_bgp" {
+  type    = bool
+  default = false
+}
+
+variable "cilium_bgp_local_asn" {
+  type    = number
+  default = 64513
+}
+
+variable "cilium_bgp_peer_asn" {
+  type    = number
+  default = 64512
+}
+
+variable "cilium_bgp_peer_address" {
+  type    = string
+  default = "192.168.2.1"
+}
+
+variable "cilium_bgp_peer_name" {
+  type    = string
+  default = "vyos"
+}
+
 variable "cilium_l2_announcement_policy_name" {
   type    = string
   default = "gateway-l2-policy"
@@ -195,12 +220,12 @@ variable "cilium_lb_pool_name" {
 
 variable "cilium_lb_pool_start" {
   type    = string
-  default = "192.168.2.50"
+  default = "192.168.3.10"
 }
 
 variable "cilium_lb_pool_stop" {
   type    = string
-  default = "192.168.2.90"
+  default = "192.168.3.100"
 }
 
 variable "expose_hubble_via_gateway" {
