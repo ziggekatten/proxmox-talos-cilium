@@ -1,0 +1,98 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# DO NOT commit terraform.tfvars to version control.
+
+# ---------------------------------------------------------------------------
+# Proxmox
+# ---------------------------------------------------------------------------
+proxmox_endpoint  = "https://192.168.1.2:8006"
+proxmox_username  = "terraform@pve"
+proxmox_password  = "changeme"
+proxmox_insecure  = true   # set false if you have a valid TLS cert
+
+talos_template_vmid   = 9000
+proxmox_node          = "pve"
+proxmox_datastore     = "local-lvm"
+proxmox_bridge        = "vmbr0"
+
+# ---------------------------------------------------------------------------
+# Cluster
+# ---------------------------------------------------------------------------
+talos_version    = "v1.12.6"
+cluster_name     = "homelab"
+cluster_vip      = "192.168.1.50"
+cluster_endpoint = "https://192.168.1.50:6443"
+
+# ---------------------------------------------------------------------------
+# Control-plane nodes  (3 nodes: .10, .11, .12)
+# ---------------------------------------------------------------------------
+controlplane_count         = 3
+controlplane_cpu           = 2
+controlplane_memory        = 4096
+controlplane_disk_size     = 50
+controlplane_ip_base       = "192.168.1.10/24"
+controlplane_gateway       = "192.168.1.1"
+controlplane_vmid_base     = 800
+
+# ---------------------------------------------------------------------------
+# Worker nodes  (2 nodes: .20, .21)
+# ---------------------------------------------------------------------------
+worker_count       = 2
+worker_cpu         = 4
+worker_memory      = 8192
+worker_disk_size   = 50
+worker_ip_base     = "192.168.1.20/24"
+worker_gateway     = "192.168.1.1"
+worker_vmid_base   = 810
+
+# ---------------------------------------------------------------------------
+# Output files
+# ---------------------------------------------------------------------------
+kubeconfig_path  = "./kubeconfig"
+talosconfig_path = "./talosconfig"
+
+# ---------------------------------------------------------------------------
+# Networking
+# ---------------------------------------------------------------------------
+pod_cidr                  = "10.244.0.0/16"
+service_cidr              = "10.96.0.0/12"
+node_mtu                  = 1450
+proxmox_snippet_datastore = "local"
+
+# ---------------------------------------------------------------------------
+# Addons
+# ---------------------------------------------------------------------------
+install_cilium      = true
+cilium_version      = "1.19.2"
+enable_cilium_l2_announcements = true
+cilium_l2_announcement_policy_name = "gateway-l2-policy"
+cilium_l2_interfaces = "^eth0$"
+install_gateway_api = true
+gateway_api_version = "v1.4.1"
+install_hubble      = true
+install_cilium_lb_pool    = true
+cilium_lb_pool_name       = "default-pool"
+cilium_lb_pool_start      = "192.168.2.50"
+cilium_lb_pool_stop       = "192.168.2.90"
+expose_hubble_via_gateway = true
+hubble_gateway_name      = "hubble"
+hubble_gateway_namespace = "kube-system"
+hubble_hostname          = ""
+
+# Optional: set full paths if Terraform's PowerShell session can't find them on PATH
+talosctl_command = "talosctl"
+kubectl_command  = "kubectl"
+helm_command     = "helm"
+
+# ---------------------------------------------------------------------------
+# Proxmox SSH – pick ONE of the three auth methods below
+# ---------------------------------------------------------------------------
+proxmox_ssh_username = "root"
+
+# Option A – password
+proxmox_ssh_password = "your-root-password"
+
+# Option B – private key file
+# proxmox_ssh_private_key = "~/.ssh/id_rsa"
+
+# Option C – SSH agent (run 'ssh-add ~/.ssh/id_rsa' first)
+# proxmox_ssh_agent = true
