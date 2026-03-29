@@ -158,6 +158,11 @@ variable "enable_cilium_l2_announcements" {
   default = true
 }
 
+variable "enable_cilium_wireguard" {
+  type    = bool
+  default = false
+}
+
 variable "enable_cilium_bgp" {
   type    = bool
   default = false

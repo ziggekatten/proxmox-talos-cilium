@@ -12,6 +12,7 @@ It provisions:
 - Talos bootstrap and local `talosconfig`/`kubeconfig`
 - Gateway API CRDs
 - Cilium with kube-proxy replacement
+- optional Cilium WireGuard pod-to-pod encryption
 - Hubble relay and UI
 - optional Gateway API exposure for Hubble UI
 - Cilium `LoadBalancerIPPool` for Gateway addresses
@@ -69,6 +70,7 @@ The first apply can take a while while Talos boots, Cilium images are pulled, an
 
 If `expose_hubble_via_gateway = true`, Terraform also creates a `Gateway` and `HTTPRoute` for the `hubble-ui` service in `kube-system`.
 If `install_cilium_lb_pool = true`, Terraform also creates a `CiliumLoadBalancerIPPool`.
+If `enable_cilium_wireguard = true`, Terraform enables Cilium WireGuard encryption for pod-to-pod traffic.
 If `enable_cilium_bgp = true`, Terraform also enables the Cilium BGP control plane and creates BGP resources for the worker nodes.
 If `enable_cilium_l2_announcements = true`, Terraform also creates a `CiliumL2AnnouncementPolicy` for the Hubble Gateway service.
 
@@ -150,6 +152,7 @@ Default BGP settings in this repo:
 Relevant Terraform variables:
 
 - `enable_cilium_bgp = true`
+- `enable_cilium_wireguard = true`
 - `enable_cilium_l2_announcements = false`
 - `cilium_bgp_local_asn`
 - `cilium_bgp_peer_asn`
@@ -160,21 +163,33 @@ Relevant Terraform variables:
 
 Network design:
 
-```mermaid
-flowchart LR
-  INTERNET[Internet Router\n192.168.1.2/24]
-  VYOS_WAN[VyOS\n192.168.1.100/24 on WAN side]
-  VYOS_LAN[VyOS\n192.168.2.1/24 on Talos side]
-  CP[Talos Control Planes\n192.168.2.20-22]
-  WK[Talos Workers\n192.168.2.30-31\nBGP peers]
-  LB[Gateway LoadBalancer IPs\n192.168.3.10-100]
+```text
+192.168.1.0/24
 
-  INTERNET --- VYOS_WAN
-  VYOS_WAN --- VYOS_LAN
-  VYOS_LAN --- CP
-  VYOS_LAN --- WK
-  WK -. advertise /32 routes via BGP .-> VYOS_LAN
-  LB -. routed by VyOS to workers .-> VYOS_LAN
+  Internet Router
+  192.168.1.2
+        |
+        |
+  VyOS eth1
+  192.168.1.100/24
+        |
+        |
+  VyOS Talos-side interface
+  192.168.2.1/24
+        |
+        +-----------------------------+
+        |                             |
+        |                             |
+  Talos Control Planes          Talos Workers
+  192.168.2.20-22               192.168.2.30-31
+                                BGP peers to 192.168.2.1
+
+Gateway LoadBalancer IP pool:
+  192.168.3.10-192.168.3.100
+
+Traffic flow:
+  VyOS learns /32 routes such as 192.168.3.10/32 from the worker nodes
+  and forwards that traffic back into the Talos network.
 ```
 
 The important detail on VyOS is that the BGP `router-id` should be the Talos-side address:
@@ -229,6 +244,7 @@ Useful verification commands after `terraform apply`:
 kubectl --kubeconfig .\kubeconfig -n kube-system get svc cilium-gateway-hubble -o wide
 cilium bgp peers --kubeconfig .\kubeconfig
 cilium bgp routes advertised --kubeconfig .\kubeconfig
+cilium status --kubeconfig .\kubeconfig
 ```
 
 On VyOS:
@@ -240,6 +256,30 @@ show ip route 192.168.3.10
 ```
 
 If everything is working, `cilium bgp peers` should show both worker sessions as `established`, and `cilium bgp routes advertised` should show `192.168.3.10/32` advertised to `192.168.2.1`.
+
+## WireGuard
+
+This branch can also enable Cilium WireGuard encryption for pod-to-pod traffic.
+
+Relevant Terraform variable:
+
+- `enable_cilium_wireguard = true`
+
+Terraform enables WireGuard through the Cilium Helm values:
+
+- `encryption.enabled=true`
+- `encryption.type=wireguard`
+
+Important note:
+
+- all cluster nodes must be able to reach each other on UDP `51871`
+
+Useful verification commands:
+
+```powershell
+cilium status --kubeconfig .\kubeconfig
+kubectl --kubeconfig .\kubeconfig -n kube-system get configmap cilium-config -o yaml | findstr wireguard
+```
 
 ## Troubleshooting
 

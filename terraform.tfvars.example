@@ -64,6 +64,7 @@ proxmox_snippet_datastore = "local"
 install_cilium      = true
 cilium_version      = "1.19.2"
 enable_cilium_l2_announcements = false
+enable_cilium_wireguard        = true
 enable_cilium_bgp              = true
 cilium_bgp_local_asn           = 64513
 cilium_bgp_peer_asn            = 64512

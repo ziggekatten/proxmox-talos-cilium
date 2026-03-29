@@ -62,6 +62,7 @@ resource "terraform_data" "cilium" {
     var.cilium_version,
     tostring(var.enable_cilium_bgp),
     tostring(var.enable_cilium_l2_announcements),
+    tostring(var.enable_cilium_wireguard),
     tostring(var.install_gateway_api),
     tostring(var.install_hubble),
     tostring(var.node_mtu),
@@ -82,6 +83,8 @@ resource "terraform_data" "cilium" {
         --set k8sClientRateLimit.qps=20 `
         --set k8sClientRateLimit.burst=40 `
         --set bgpControlPlane.enabled=${lower(tostring(var.enable_cilium_bgp))} `
+        --set encryption.enabled=${lower(tostring(var.enable_cilium_wireguard))} `
+        --set encryption.type=wireguard `
         --set l2announcements.enabled=${lower(tostring(var.enable_cilium_l2_announcements))} `
         --set hubble.enabled=${lower(tostring(var.install_hubble))} `
         --set hubble.relay.enabled=${lower(tostring(var.install_hubble))} `
